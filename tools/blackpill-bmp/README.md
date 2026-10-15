@@ -1,7 +1,8 @@
 # Black Pill (STM32F401CC) as a Black Magic Probe
 
 Black Magic Debug v2.0.0, `blackpill-f401cc` probe, built with `-Dbmd_bootloader=false`
-so it sits at 0x08000000 and flashes straight through the F401's ROM USB DFU.
+so it sits at 0x08000000
+Built against blackmagic-debug/libopencm3 at 43b39fe (the July 2025 tree v2.0.0 shipped with; the later USB rewrite breaks enumeration). and flashes straight through the F401's ROM USB DFU.
 
 Flash: hold BOOT0, tap NRST, release BOOT0, then in STM32CubeProgrammer pick USB,
 Connect, open `bmp_f401cc.hex` (or the .bin at 0x08000000) and Start Programming.
