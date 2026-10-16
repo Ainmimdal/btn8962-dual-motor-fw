@@ -505,7 +505,11 @@ class App(tk.Tk):
             messagebox.showerror("Connect failed", str(e))
             return
         self.connect_btn.configure(text="Disconnect")
-        self.status(f"Connected via {self.link.kind} ({where})")
+        self._where = where
+        self._answered = False
+        self._connect_t = self._last_info = time.monotonic()
+        self._warned = False
+        self.status(f"Port {where} open, waiting for the board to answer...")
         self.link.info()
         self.after(150, lambda: self.cmd("read_all"))
 
@@ -562,6 +566,9 @@ class App(tk.Tk):
             for _ in range(500):
                 ev = self.q.get_nowait()
                 kind = ev[0]
+                if self.link and not self._answered and kind in ("telem", "param", "paramdef", "info"):
+                    self._answered = True
+                    self.status(f"Connected via {self.link.kind} ({self._where}), board answered")
                 if kind == "telem":
                     _, m, t = ev
                     self.motors[m].update_telem(t)
@@ -595,6 +602,16 @@ class App(tk.Tk):
         except queue.Empty:
             pass
         now = time.monotonic()
+        if self.link and not self._answered and now - self._last_info >= 1.0:
+            self._last_info = now
+            try:
+                self.link.info()
+            except Exception as e:
+                self.disconnect(f"Link error: {e}")
+            if self.link and not self._warned and now - self._connect_t >= 3.0:
+                self._warned = True
+                self.status(f"No reply from the board on {self._where}. Check the board has power "
+                            "and the wiring is crossed (adapter TX -> PB11, RX -> PB10, GND).")
         if self.link and self.keepalive.get() and now - self._last_ping >= KEEPALIVE_S:
             self._last_ping = now
             try:

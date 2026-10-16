@@ -292,6 +292,8 @@ class CanLink(Link):
 def list_serial_ports():
     try:
         from serial.tools import list_ports
-        return [p.device for p in list_ports.comports()]
+        # Black Magic Probe ports (VID 0x1D50) go last so they are never the default pick.
+        ports = sorted(list_ports.comports(), key=lambda p: p.vid == 0x1D50)
+        return [p.device for p in ports]
     except Exception:
         return []
