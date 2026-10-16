@@ -8,6 +8,8 @@
  *   ENC1_CONFIG        ENC1_ON_TIM1 (default) or ENC1_ON_TIM3_3V3
  *   USE_CURRENT_SENSE  1 (default) = IS ADC+DMA, current limit, overcurrent fault
  *                      0           = no IS ADC, encoder-based stall check, duty cap + ramp
+ *   SWAP_BRIDGES       1 (default) = motor 1 drives the U2/U3 bridge (OUT3/OUT4),
+ *                      motor 2 the U6/U8 bridge (OUT1/OUT2); 0 = as drawn
  */
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -28,6 +30,14 @@
 #ifndef USE_CURRENT_SENSE
 #define USE_CURRENT_SENSE 1
 #endif
+
+/* Which BTN8962 bridge each motor drives (PWM, INH and IS move together;
+ * encoders stay put: motor 1 = encoder 1). On the built board the terminals
+ * marked M2 are wired to the U6/U8 bridge, so swapped is the default. */
+#ifndef SWAP_BRIDGES
+#define SWAP_BRIDGES 1
+#endif
+#define MOTOR_BRIDGE(m) ((uint8_t)((m) ^ (SWAP_BRIDGES ? 1u : 0u)))
 
 /* Optional Z index for encoder 1 on PA8 (only possible in ENC1_ON_TIM3_3V3,
  * because PA8 is encoder A in ENC1_ON_TIM1). Latches the position on a rising

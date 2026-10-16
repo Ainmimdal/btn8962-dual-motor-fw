@@ -13,8 +13,9 @@ void board_init(void);
 /* INH lines are static enables: only ever switched here, never PWM'd. */
 static inline void board_inh(uint8_t motor, bool on)
 {
-    GPIO_TypeDef *port = motor == 0 ? E1_GPIO_Port : E2_GPIO_Port;
-    uint16_t pin = motor == 0 ? E1_Pin : E2_Pin;
+    const bool b0 = MOTOR_BRIDGE(motor) == 0;
+    GPIO_TypeDef *port = b0 ? E1_GPIO_Port : E2_GPIO_Port;
+    uint16_t pin = b0 ? E1_Pin : E2_Pin;
     port->BSRR = on ? pin : ((uint32_t)pin << 16);
 }
 

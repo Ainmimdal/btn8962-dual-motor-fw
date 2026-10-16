@@ -277,8 +277,9 @@ static void plant_1ms(void)
         }
         sim_enc[m] = (uint16_t)(int32_t)lround(th[m]);
         double a = ia[m] > 0 ? ia[m] : 0, b = ia[m] < 0 ? -ia[m] : 0;
-        sim_is_raw[2 * m] = (uint16_t)fmin(4095.0, a / IS_AMPS_PER_COUNT);
-        sim_is_raw[2 * m + 1] = (uint16_t)fmin(4095.0, b / IS_AMPS_PER_COUNT);
+        /* pwm_set/board_inh are stubbed per motor, but IS is per bridge. */
+        sim_is_raw[2 * MOTOR_BRIDGE(m)] = (uint16_t)fmin(4095.0, a / IS_AMPS_PER_COUNT);
+        sim_is_raw[2 * MOTOR_BRIDGE(m) + 1] = (uint16_t)fmin(4095.0, b / IS_AMPS_PER_COUNT);
     }
 }
 

@@ -132,8 +132,9 @@ void control_tick(void)
 #if USE_CURRENT_SENSE
         /* Only the high side that is switching reports current, so the motor
          * current is side A minus side B. */
-        uint16_t ra = raw[2 * m], rb = raw[2 * m + 1];
-        float cur = adc_is_to_amps((uint8_t)(2 * m), ra) - adc_is_to_amps((uint8_t)(2 * m + 1), rb);
+        const uint8_t ia = (uint8_t)(2 * MOTOR_BRIDGE(m)), ib = (uint8_t)(ia + 1);
+        uint16_t ra = raw[ia], rb = raw[ib];
+        float cur = adc_is_to_amps(ia, ra) - adc_is_to_amps(ib, rb);
         if (motor_inv)
             cur = -cur;
         M->current = cur;

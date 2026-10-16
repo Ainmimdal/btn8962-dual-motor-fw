@@ -29,7 +29,7 @@ dual-motor-fw/
 
 ## Pin map
 
-LQFP48 pin numbers. Net names are as drawn on the schematic.
+LQFP48 pin numbers. Net names are as drawn on the schematic. The motor column is as drawn too; the default build sets `SWAP_BRIDGES=1` (include/config.h), so motor 1 actually drives the U2/U3 bridge (OUT3/OUT4, the terminals marked M2 on the built board) and motor 2 drives U6/U8 (OUT1/OUT2). Encoders do not move: motor 1 always uses encoder 1.
 
 | Net | MCU pin | Pin # | Function in firmware | Notes |
 |---|---|---|---|---|
@@ -287,11 +287,11 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 
 **3. One motor at low duty** (supply limit about 1 A)
 
-- [ ] Connect motor 1 to OUT1/OUT2.
-- [ ] `MODE 1 DUTY`, then `SET 1 0.1`. E1 goes high and P1 shows about 10 % duty; the motor turns slowly.
+- [ ] Connect motor 1 to OUT3/OUT4 (OUT1/OUT2 with `SWAP_BRIDGES=0`).
+- [ ] `MODE 1 DUTY`, then `SET 1 0.1`. E2 goes high and P3 shows about 10 % duty; the motor turns slowly.
 - [ ] Check that POS increases for positive duty. If not, set `ENC1_INVERT` (wrong count direction) or `MOTOR1_INVERT` (wrong rotation).
-- [ ] `SET 1 -0.1` reverses it and moves the PWM to P2. `MODE 1 OFF` drops E1.
-- [ ] Repeat for motor 2 (OUT3/OUT4).
+- [ ] `SET 1 -0.1` reverses it and moves the PWM to P4. `MODE 1 OFF` drops E2.
+- [ ] Repeat for motor 2 (OUT1/OUT2).
 
 **4. Check IS readings**
 
