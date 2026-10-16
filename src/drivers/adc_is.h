@@ -25,6 +25,9 @@ float adc_is_to_amps(uint8_t ch, uint16_t raw);
 /* Measure the zero-current offsets. Bridges must be disabled. Returns the
  * largest raw offset in counts (offsets are clamped to IS_OFFSET_MAX_COUNTS). Blocking, ~30 ms. */
 uint16_t adc_is_calibrate_offset(void);
+/* Same, with both bridges briefly enabled at 0 % duty (the offset an enabled
+ * BTN8962 shows). Motors must be OFF. Returns the largest offset. */
+uint16_t adc_is_calibrate_enabled(void);
 #else
 static inline void adc_is_trigger(void) {}
 #endif

@@ -213,6 +213,7 @@ One command per line. Commands are case-insensitive, motors are `1` or `2`, and 
 | `CLR <m>\|ALL` | Clear latched faults |
 | `ZERO <m>` | Set position to 0 |
 | `HOME <m>` | Home onto the motor's limit switch (`ERR NO_SWITCH` if it has none) |
+| `ISCAL` | Re-measure the current-sense zero offset (motors must be OFF; enables both bridges at 0 % duty for ~40 ms) |
 | `STOP` | Both motors OFF |
 | `PING` | Keep the watchdog alive |
 | `TELEM <ms>` | Telemetry period (0 = off, default 50) |
@@ -299,7 +300,7 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 
 - [ ] Bench supply at 12 V with a current limit around 100–200 mA.
 - [ ] Flash over SWD.
-- [ ] On UART3, expect: `BOOT FW=… RESET=POWER`, then `IS offset max N counts` (N should be small, under about 50), then `CAN OK` (or `CAN FAILED TO START` with no transceiver or bus), then `READY`.
+- [ ] On UART3, expect: `BOOT FW=… RESET=POWER`, then `IS offset max N counts` (measured with the bridges enabled at 0 % duty; an enabled BTN8962 adds an offset current, so a few hundred counts is normal), then `CAN OK` (or `CAN FAILED TO START` with no transceiver or bus), then `READY`.
 - [ ] STATUS blinks slowly and ERROR is off.
 - [ ] `VER`, then `GET STAT`: TICKS increases about 1000/s and OVR stays 0.
 - [ ] Scope PA0–PA3: about 20 kHz carrier, 0 % duty. E1/E2 (PC13/PC14) are low.

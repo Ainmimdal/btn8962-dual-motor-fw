@@ -71,8 +71,7 @@ int main(void)
     pwm_init();                  /* starts PWM (duty 0), IS sampling and the control loop */
 
 #if USE_CURRENT_SENSE
-    /* Bridges are disabled, so IS should read its zero offset. */
-    uint16_t off = adc_is_calibrate_offset();
+    uint16_t off = adc_is_calibrate_enabled();
     snprintf(buf, sizeof buf, "IS offset max %u counts%s\r\n", off,
              off > IS_OFFSET_MAX_COUNTS ? " - WARNING, check IS wiring" : "");
     uart_puts(buf);

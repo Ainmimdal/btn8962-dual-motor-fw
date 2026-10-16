@@ -112,4 +112,16 @@ uint16_t adc_is_calibrate_offset(void)
     return worst;
 }
 
+uint16_t adc_is_calibrate_enabled(void)
+{
+    /* IN low on both sides = both low-side switches on: the motor is shorted
+     * (brake), nothing is drawn from the supply, and IS shows its offset. */
+    for (uint8_t m = 0; m < 2; m++)
+        board_inh(m, true);
+    uint16_t off = adc_is_calibrate_offset();
+    for (uint8_t m = 0; m < 2; m++)
+        board_inh(m, false);
+    return off;
+}
+
 #endif /* USE_CURRENT_SENSE */

@@ -130,7 +130,11 @@
 #define IS_AMPS_PER_COUNT    ((ADC_VREF_V / ADC_FULL_SCALE) / IS_R_SENSE_OHMS * IS_KILIS)
 
 #define IS_AVG_SAMPLES       16       /* PWM periods averaged (<= CTRL_DECIM) */
-#define IS_OFFSET_MAX_COUNTS 200      /* warn at boot if the zero offset is above this */
+/* The zero offset is measured with the bridges enabled at 0 % duty (both
+ * low sides on, no supply current): an enabled BTN8962 sources an offset
+ * current on IS that it doesn't with INH low. Offsets above this are clamped
+ * and reported as a warning. */
+#define IS_OFFSET_MAX_COUNTS 1500
 
 #define CURRENT_LIMIT_A      5.0f     /* [runtime] soft limit: duty is pulled back above this */
 #define CURRENT_LIMIT_KI     20.0f    /* duty-scale reduction per (A over limit * s) */

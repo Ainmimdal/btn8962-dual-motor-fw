@@ -14,6 +14,7 @@
 #include "config.h"
 #include "control/motor.h"
 #include "control/params.h"
+#include "drivers/adc_is.h"
 #include "drivers/can_bus.h"
 #include "drivers/encoder.h"
 #include "drivers/ppm.h"
@@ -143,7 +144,7 @@ static void cmd_help(void)
         "  SET <m> <target>        duty -1..1 | counts/s | counts\r\n"
         "  PID <m> VEL|POS [kp ki kd]\r\n"
         "  GET <m> | GET PPM | GET STAT\r\n"
-        "  CLR <m>|ALL   ZERO <m>   HOME <m>   STOP   PING\r\n"
+        "  CLR <m>|ALL   ZERO <m>   HOME <m>   STOP   PING   ISCAL\r\n"
         "  TELEM <ms>    (0 = off)   VER   HELP\r\n"
         "  CFG [name [value]]   SAVE   DEFAULTS\r\n");
 }
@@ -284,6 +285,15 @@ static bool handle(char **tok, int n)
             return false;
         motor_zero(m);
         out("OK\r\n");
+    } else if (strcmp(tok[0], "ISCAL") == 0) {
+#if USE_CURRENT_SENSE
+        if (motor_any_enabled())
+            out("ERR BUSY\r\n");
+        else
+            outf("OK IS_OFFSET=%u\r\n", adc_is_calibrate_enabled());
+#else
+        out("ERR NO_CURRENT_SENSE\r\n");
+#endif
     } else if (strcmp(tok[0], "HOME") == 0) {
         if (n != 2 || !parse_motor(tok[1], &m))
             return false;
