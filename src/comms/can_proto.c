@@ -11,7 +11,8 @@
  * DLC 0, on the same ID. Every frame addressed to one of our nodes feeds the
  * command watchdog, as on an ODrive.
  *
- * ODrive commands (units: 1 turn = ENCx_CPR counts, "torque" = duty -1..1):
+ * ODrive commands (units: 1 turn = one output-shaft turn, see
+ * counts_per_output_turn(); "torque" = duty -1..1):
  *   0x01 heartbeat  (tx, every CAN_HB_MS; also on request)
  *        0.5.6: u32 axis_error, u8 state, u8 motor_err_flag, u8 enc_err_flag,
  *               u8 ctrl_err_flag | traj_done << 7
@@ -117,7 +118,6 @@ static node_t nodes[NUM_MOTORS];
 static uint32_t last_hb, last_enc, last_vendor;
 
 static const int node_prm[NUM_MOTORS] = {PRM_M1_NODE_ID, PRM_M2_NODE_ID};
-static const int cpr_prm[NUM_MOTORS] = {PRM_ENC1_CPR, PRM_ENC2_CPR};
 static const int vel_kp_prm[NUM_MOTORS] = {PRM_M1_VEL_KP, PRM_M2_VEL_KP};
 static const int pos_kp_prm[NUM_MOTORS] = {PRM_M1_POS_KP, PRM_M2_POS_KP};
 
@@ -221,7 +221,7 @@ static void send_encoder_estimates(uint8_t m)
 {
     motor_status_t s;
     motor_get_status(m, &s);
-    const float cpr = PRM(cpr_prm[m]);
+    const float cpr = counts_per_output_turn(m);
     send_2f(m, OD_ENCODER_ESTIMATES, (float)s.pos / cpr, s.vel / cpr);
 }
 
@@ -392,7 +392,7 @@ static void handle(const can_frame_t *f)
 
     /* Any message to the axis feeds the watchdog (ODrive behaviour). */
     protocol_feed_watchdog();
-    const float cpr = PRM(cpr_prm[m]);
+    const float cpr = counts_per_output_turn(m);
     motor_status_t s;
 
     switch (cmd) {
@@ -434,7 +434,7 @@ static void handle(const can_frame_t *f)
     case OD_GET_ENCODER_COUNT:
         if (is_get(f)) {
             uint8_t d[8];
-            int32_t c, icpr = (int32_t)cpr, in_cpr;
+            int32_t c, icpr = (int32_t)(cpr + 0.5f), in_cpr;
             motor_get_status(m, &s);
             c = s.pos;
             in_cpr = icpr > 0 ? ((c % icpr) + icpr) % icpr : c;

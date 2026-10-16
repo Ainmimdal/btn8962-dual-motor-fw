@@ -54,6 +54,10 @@ static const param_def_t defs[PRM_COUNT] = {
     [PRM_CAN_ODRV_VER] = {"CAN_ODRV_VER", CAN_ODRIVE_VER, 51.0f, 56.0f, F_INT},
     [PRM_ENC1_CPR] = {"ENC1_CPR", ENC1_CPR, 1.0f, 1.0e6f, 0},
     [PRM_ENC2_CPR] = {"ENC2_CPR", ENC2_CPR, 1.0f, 1.0e6f, 0},
+    [PRM_M1_GEAR] = {"M1_GEAR", MOTOR1_GEAR, 0.001f, 10000.0f, 0},
+    [PRM_M2_GEAR] = {"M2_GEAR", MOTOR2_GEAR, 0.001f, 10000.0f, 0},
+    [PRM_ENC1_ON_OUTPUT] = {"ENC1_ON_OUTPUT", ENC1_ON_OUTPUT, 0.0f, 1.0f, F_INT},
+    [PRM_ENC2_ON_OUTPUT] = {"ENC2_ON_OUTPUT", ENC2_ON_OUTPUT, 0.0f, 1.0f, F_INT},
 };
 
 volatile float g_param[PRM_COUNT];

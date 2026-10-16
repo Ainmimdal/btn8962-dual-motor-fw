@@ -26,6 +26,8 @@ typedef enum {
     PRM_M1_NODE_ID, PRM_M2_NODE_ID, PRM_CAN_BAUD,      /* 29..31 */
     PRM_CAN_HB_MS, PRM_CAN_ENC_MS, PRM_CAN_ODRV_VER,   /* 32..34 */
     PRM_ENC1_CPR, PRM_ENC2_CPR,                        /* 35..36 */
+    PRM_M1_GEAR, PRM_M2_GEAR,                          /* 37..38 */
+    PRM_ENC1_ON_OUTPUT, PRM_ENC2_ON_OUTPUT,            /* 39..40 */
     PRM_COUNT
 } param_id_t;
 
@@ -56,5 +58,15 @@ int param_find(const char *name);   /* -1 if unknown */
 param_status_t param_set(int id, float value);
 void params_defaults(void);
 param_status_t params_save(void);
+
+/* Encoder counts per output-shaft turn: ENCx_CPR counts per turn of the shaft
+ * the encoder sits on, times the gear ratio when that is the motor shaft.
+ * Control and the UART protocol stay in counts; this only scales "turns". */
+static inline float counts_per_output_turn(uint8_t m)
+{
+    const float cpr = PRM(m == 0 ? PRM_ENC1_CPR : PRM_ENC2_CPR);
+    const bool on_output = PRM(m == 0 ? PRM_ENC1_ON_OUTPUT : PRM_ENC2_ON_OUTPUT) > 0.5f;
+    return on_output ? cpr : cpr * PRM(m == 0 ? PRM_M1_GEAR : PRM_M2_GEAR);
+}
 
 #endif

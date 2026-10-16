@@ -42,9 +42,24 @@ PARAMS = [
     (32, "CAN_HB_MS", "CAN", "ms", 0, 60000, "Heartbeat period, cmd 0x01 (0 = off)", None),
     (33, "CAN_ENC_MS", "CAN", "ms", 0, 60000, "Encoder estimates period, cmd 0x09 (0 = off)", None),
     (34, "CAN_ODRV_VER", "CAN", "51/56", 51, 56, "ODrive heartbeat/error layout: 51 = 0.5.1, 56 = 0.5.6", None),
-    (35, "ENC1_CPR", "Encoder", "cnt/turn", 1, 1e6, "Counts per ODrive 'turn' for motor 1", None),
-    (36, "ENC2_CPR", "Encoder", "cnt/turn", 1, 1e6, "Counts per ODrive 'turn' for motor 2", None),
+    (35, "ENC1_CPR", "Encoder", "cnt/turn", 1, 1e6, "Encoder 1 counts per turn of its shaft (4 x PPR)", None),
+    (36, "ENC2_CPR", "Encoder", "cnt/turn", 1, 1e6, "Encoder 2 counts per turn of its shaft (4 x PPR)", None),
+    (37, "M1_GEAR", "Encoder", "ratio", 0.001, 10000, "Motor 1 gear ratio, motor turns per output turn", None),
+    (38, "M2_GEAR", "Encoder", "ratio", 0.001, 10000, "Motor 2 gear ratio, motor turns per output turn", None),
+    (39, "ENC1_ON_OUTPUT", "Encoder", "0/1", 0, 1, "Encoder 1 is on the output shaft (gear ratio not applied)", None),
+    (40, "ENC2_ON_OUTPUT", "Encoder", "0/1", 0, 1, "Encoder 2 is on the output shaft (gear ratio not applied)", None),
 ]
+
+UNIT_PARAMS = {35, 36, 37, 38, 39, 40}
+
+
+def counts_per_turn(params, m):
+    """Encoder counts per output-shaft turn for motor m (0/1), from a
+    {param id: value} dict; mirrors counts_per_output_turn() in firmware."""
+    cpr = params.get(35 + m, 1.0)
+    if params.get(39 + m, 0.0) > 0.5:
+        return cpr
+    return cpr * params.get(37 + m, 1.0)
 
 BY_ID = {p[0]: p for p in PARAMS}
 BY_NAME = {p[1]: p for p in PARAMS}

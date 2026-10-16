@@ -137,7 +137,10 @@ These values can be changed while the board runs:
 - the stall thresholds,
 - the watchdog and telemetry periods,
 - the motor and encoder direction flags,
-- the CAN node IDs, bit rate, message rates and encoder counts per turn.
+- the CAN node IDs, bit rate and message rates,
+- the encoder resolution, gear ratio and encoder location (see below).
+
+**Encoder and gearbox.** Per motor: `ENCx_CPR` is counts per turn of the shaft the encoder is on (4 × the datasheet PPR or lines), `Mx_GEAR` is motor turns per output turn (30 for 30:1), and `ENCx_ON_OUTPUT` is 1 when the encoder sits on the output shaft, so the gear ratio doesn't apply. Together they give counts per output turn: `ENCx_CPR × Mx_GEAR` with the encoder on the motor, `ENCx_CPR` on the output. Control, the UART protocol, `VEL_MAX`, `STALL_COUNTS` and the PID gains stay in counts, so changing these never retunes anything. They set the CAN "turns", and the GUI shows and takes output degrees and RPM once counts per output turn is no longer 1.
 
 Their defaults are the `config.h` values marked `[runtime]`. Change them with `CFG` on UART, the CAN vendor commands, or the GUI's Configuration tab. `SAVE` writes them to the last 1 KB flash page (0x0800FC00) and they load at boot; a blank or corrupt page falls back to the defaults. Settings saved by older firmware still load, and settings added since then start at their defaults.
 
@@ -220,7 +223,7 @@ The board uses ODrive's "CAN Simple" protocol from firmware 0.5.1 to 0.5.6, so i
 - **Bit rate.** Everything on the bus must run at one bit rate. ODrive defaults to 250 kbit/s and this board to 125 kbit/s. Either set `CAN_BAUD` = 250 here (save, then reset), or set the ODrive to 125 kbit/s: `odrv0.can.config.baud_rate = 125000` on 0.5.6, or `odrv0.can.set_baud_rate(125000)` on 0.5.1. 500 and 1000 are also accepted, but see the clock note below.
 - **Bus load.** At 125 kbit/s, the defaults (heartbeat 100 ms, estimates 20 ms, vendor status 100 ms) use about 15 % of the bus for this board, and a two-axis ODrive with its 0.5.6 defaults uses about 22 %.
 
-**Units.** One "turn" is `ENCx_CPR` encoder counts. The default CPR of 1 makes turns equal to counts. "Torque" in voltage mode is duty, from -1 to 1.
+**Units.** One "turn" is one output-shaft turn: `ENCx_CPR × Mx_GEAR` counts, or `ENCx_CPR` with `ENCx_ON_OUTPUT` = 1. The defaults make turns equal to counts. "Torque" in voltage mode is duty, from -1 to 1.
 
 **Commands** (both ODrive versions unless noted). A "get" is answered on the same ID when it arrives as an RTR frame, or as a data frame with DLC 0 (as in 0.5.6).
 
@@ -316,7 +319,7 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 
 - **Driver chip.** The fitted drivers are BTN8962TA (all four parts on the schematic are BTN8962TAAUMA1; only the title block says btn7971). `IS_KILIS = 19500` is the typical datasheet ratio and should be calibrated in step 4.
 - **Limit switches.** LIMIT1 stops motor 1 and LIMIT2 stops motor 2. Each switch closes to GND.
-- **Encoders.** These are quadrature encoders read at x4. All native units are counts. `ENCx_CPR` only scales the ODrive "turns" on CAN.
+- **Encoders.** These are quadrature encoders read at x4. All native units are counts. `ENCx_CPR`, `Mx_GEAR` and `ENCx_ON_OUTPUT` only scale the ODrive "turns" on CAN and the GUI's degrees/RPM.
 - **PPM.** PPM inputs are measured and reported only (`GET PPM`, telemetry). Nothing is controlled from them yet.
 - **CAN.** The protocol follows ODrive CAN Simple 0.5.x. Default node IDs are 40 and 41, the default bit rate is 125 kbit/s, and the vendor commands use 0x1E/0x1F.
 - **Watchdog behaviour.** A watchdog timeout stops the motors without latching a fault. A limit switch pressed at power-up latches a fault.

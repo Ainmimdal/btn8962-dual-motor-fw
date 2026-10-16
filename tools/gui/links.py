@@ -17,7 +17,7 @@ import struct
 import threading
 import time
 
-from params import MODES, BY_ID
+from params import MODES, BY_ID, UNIT_PARAMS, counts_per_turn
 
 PARAM_STATUS = {0: "", 1: "BAD_ID", 2: "RANGE", 3: "BUSY", 4: "FLASH"}
 
@@ -147,7 +147,6 @@ OD_HEARTBEAT, OD_ESTIMATES, OD_CLEAR, VENDOR_REQ, VENDOR_TX = 0x01, 0x09, 0x18, 
 V_SET, V_GET, V_SAVE, V_DEFAULTS, V_INFO, V_MODE, V_TARGET, V_ZERO, V_STOP = range(1, 10)
 V_STATUS = 0x80
 NODE_PARAMS = {29: 0, 30: 1}      # M1_NODE_ID, M2_NODE_ID
-CPR_PARAMS = {35: 0, 36: 1}       # ENC1_CPR, ENC2_CPR
 
 
 class CanLink(Link):
@@ -157,7 +156,7 @@ class CanLink(Link):
         import can
         super().__init__(q)
         self.nodes = list(nodes)
-        self.cpr = [1.0, 1.0]
+        self.units = {}               # encoder/gear params, for ODrive turns -> counts
         kwargs = {"interface": interface, "bitrate": bitrate}
         if channel:
             kwargs["channel"] = channel
@@ -247,7 +246,8 @@ class CanLink(Link):
     def _frame(self, m, cmd, d):
         if cmd == OD_ESTIMATES and len(d) >= 8:
             pos, vel = struct.unpack("<ff", d[:8])
-            self._kin[m] = (round(pos * self.cpr[m]), vel * self.cpr[m])
+            cpt = counts_per_turn(self.units, m)
+            self._kin[m] = (round(pos * cpt), vel * cpt)
             return
         if cmd == OD_HEARTBEAT:
             return
@@ -274,8 +274,8 @@ class CanLink(Link):
             if sub in (V_SET, V_GET):
                 pid = d[1]
                 if not status:
-                    if pid in CPR_PARAMS:
-                        self.cpr[CPR_PARAMS[pid]] = val
+                    if pid in UNIT_PARAMS:
+                        self.units[pid] = val
                     if pid in NODE_PARAMS:
                         self.nodes[NODE_PARAMS[pid]] = int(val)
                 self.emit("param", pid, val, status)

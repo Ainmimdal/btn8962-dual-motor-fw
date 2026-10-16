@@ -15,11 +15,13 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from links import CanLink, UartLink, list_serial_ports
-from params import BY_ID, BY_NAME, MODES, PARAMS, fault_text
+from params import BY_ID, BY_NAME, MODES, PARAMS, UNIT_PARAMS, counts_per_turn, fault_text
 
 CAN_INTERFACES = ["slcan", "gs_usb", "pcan", "socketcan", "kvaser", "ixxat", "vector",
                   "canalystii", "seeedstudio", "usb2can", "serial", "virtual"]
-PLOT_SIGNALS = {"Velocity (cnt/s)": "vel", "Position (cnt)": "pos",
+# Position/velocity are in output degrees/RPM once ENCx_CPR (and the gear
+# ratio) are set, raw counts while counts per output turn is still 1.
+PLOT_SIGNALS = {"Velocity": "vel_u", "Position": "pos_u",
                 "Current (A)": "cur", "Duty": "duty"}
 PLOT_SECONDS = 10.0
 KEEPALIVE_S = 0.2
@@ -77,14 +79,19 @@ class MotorPanel(ttk.LabelFrame):
 
     def _set_slider_range(self):
         mode = self.mode.get()
+        cpt, scaled = self.app.counts_per_turn(self.m)
         if mode == 1:
             lo, hi, unit = -1.0, 1.0, "duty -1..1"
         elif mode == 2:
             vmax = self.app.param_value("VEL_MAX") or 20000.0
-            lo, hi, unit = -vmax, vmax, "counts/s"
+            if scaled:
+                vmax, unit = vmax / cpt * 60.0, "RPM (output)"
+            else:
+                unit = "counts/s"
+            lo, hi = -vmax, vmax
         elif mode == 3:
-            span = 50000.0
-            lo, hi, unit = -span, span, "counts"
+            span, unit = (3600.0, "deg (output)") if scaled else (50000.0, "counts")
+            lo, hi = -span, span
         else:
             lo, hi, unit = -1.0, 1.0, ""
         self.slider.configure(from_=lo, to=hi)
@@ -102,7 +109,16 @@ class MotorPanel(ttk.LabelFrame):
         except ValueError:
             self.app.status(f"Motor {self.m + 1}: target is not a number")
             return
-        self.app.cmd("set_target", self.m, v)
+        self.app.cmd("set_target", self.m, self.to_counts(v))
+
+    def to_counts(self, v):
+        """Target as shown (deg / RPM when scaled) -> what the board takes."""
+        cpt, scaled = self.app.counts_per_turn(self.m)
+        if scaled and self.mode.get() == 3:
+            return v / 360.0 * cpt
+        if scaled and self.mode.get() == 2:
+            return v / 60.0 * cpt
+        return v
 
     def on_slider(self, _v):
         if self.mode.get() == 0:
@@ -114,12 +130,16 @@ class MotorPanel(ttk.LabelFrame):
         v = self.slider_var.get()
         v = round(v, 3) if self.mode.get() == 1 else round(v)
         self.target.set(str(v))
-        self.app.cmd("set_target", self.m, v)
+        self.app.cmd("set_target", self.m, self.to_counts(v))
 
     def update_telem(self, t):
         self.vals["mode"].set(MODES[t["mode"]] if t["mode"] < 4 else "?")
-        self.vals["pos"].set(f"{t['pos']}")
-        self.vals["vel"].set(f"{t['vel']:.0f} cnt/s")
+        if self.app.counts_per_turn(self.m)[1]:
+            self.vals["pos"].set(f"{t['pos_u']:.1f} deg")
+            self.vals["vel"].set(f"{t['vel_u']:.1f} RPM")
+        else:
+            self.vals["pos"].set(f"{t['pos']}")
+            self.vals["vel"].set(f"{t['vel']:.0f} cnt/s")
         self.vals["cur"].set("n/a (no IS)" if t["cur"] is None else f"{t['cur']:.3f} A")
         self.vals["duty"].set(f"{t['duty'] * 100:.1f} %")
         self.vals["faults"].set(fault_text(t["faults"]))
@@ -137,7 +157,7 @@ class Plot(ttk.Frame):
         bar = ttk.Frame(self)
         bar.pack(fill="x")
         ttk.Label(bar, text="Plot:").pack(side="left")
-        self.signal = tk.StringVar(value="Velocity (cnt/s)")
+        self.signal = tk.StringVar(value="Velocity")
         ttk.Combobox(bar, textvariable=self.signal, values=list(PLOT_SIGNALS),
                      state="readonly", width=18).pack(side="left", padx=4)
         for m in range(2):
@@ -547,6 +567,11 @@ class App(tk.Tk):
             self.cmd("raw", text)
             self.raw.set("")
 
+    def counts_per_turn(self, m):
+        """(counts per output turn, True when that makes deg/RPM meaningful)."""
+        cpt = counts_per_turn(self.params, m)
+        return cpt, cpt > 0 and abs(cpt - 1.0) > 1e-6
+
     def param_value(self, name):
         p = BY_NAME.get(name)
         return self.params.get(p[0]) if p else None
@@ -573,6 +598,9 @@ class App(tk.Tk):
                     self.status(f"Connected via {self.link.kind} ({self._where}), board answered")
                 if kind == "telem":
                     _, m, t = ev
+                    cpt, scaled = self.counts_per_turn(m)
+                    t["pos_u"] = t["pos"] / cpt * 360.0 if scaled else t["pos"]
+                    t["vel_u"] = t["vel"] / cpt * 60.0 if scaled else t["vel"]
                     self.motors[m].update_telem(t)
                     self.plot.add(m, t)
                     if self.show_tx.get():
@@ -580,7 +608,11 @@ class App(tk.Tk):
                 elif kind == "param":
                     _, pid, val, st = ev
                     if not st:
+                        changed = self.params.get(pid) != val
                         self.params[pid] = val
+                        if changed and pid in UNIT_PARAMS | {BY_NAME["VEL_MAX"][0]}:
+                            for panel in self.motors:
+                                panel._set_slider_range()
                     self.config_tab.on_param(pid, val, st)
                 elif kind == "paramdef":
                     _, pid, name, _val, lo, hi, de = ev

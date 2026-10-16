@@ -56,7 +56,7 @@
 #define USE_IWDG 1              /* independent watchdog, ~100 ms */
 #endif
 
-#define FW_VERSION "0.3.0"
+#define FW_VERSION "0.4.0"
 
 /* ------------------------------------------------------------------------- */
 /* Clocks: HSI 8 MHz / 2 * 16 = 64 MHz (no HSE fitted)                       */
@@ -195,10 +195,18 @@
 #define CAN_TELEM_MS         100      /* [runtime] cyclic vendor status (cmd 0x1F), 0 = off */
 #define CAN_ODRIVE_VER       56       /* [runtime] 56 = 0.5.6 heartbeat/error layout, 51 = 0.5.1 */
 
-/* Encoder counts per output "turn", used to convert to ODrive units (turns,
- * turns/s). The default of 1 makes ODrive "turns" equal to raw counts. */
+/* Encoder and gearbox, used to convert counts to output-shaft turns (CAN
+ * "turns", GUI degrees/RPM). ENCx_CPR is counts per turn of the shaft the
+ * encoder is on (x4 decoding: 4 x the datasheet PPR/lines). Mx_GEAR is motor
+ * turns per output turn (30 for 30:1). ENCx_ON_OUTPUT = 1 when the encoder is
+ * on the output shaft, so the gear ratio doesn't apply. The defaults make one
+ * "turn" equal one count. */
 #define ENC1_CPR             1        /* [runtime] */
 #define ENC2_CPR             1        /* [runtime] */
+#define MOTOR1_GEAR          1        /* [runtime] */
+#define MOTOR2_GEAR          1        /* [runtime] */
+#define ENC1_ON_OUTPUT       0        /* [runtime] */
+#define ENC2_ON_OUTPUT       0        /* [runtime] */
 
 /* ------------------------------------------------------------------------- */
 /* Compile-time checks                                                       */
