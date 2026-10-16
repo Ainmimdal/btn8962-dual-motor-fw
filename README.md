@@ -339,6 +339,8 @@ pip install -r requirements.txt     # pyserial, python-can
 python motor_gui.py
 ```
 
+On Windows you can instead double-click `Motor GUI.pyw` (installs the two packages on first run, no console window).
+
 This needs Python 3.9+ with Tkinter. It runs on Windows, macOS and Linux.
 
 **Connection bar**
