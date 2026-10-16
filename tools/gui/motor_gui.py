@@ -215,7 +215,11 @@ class ConfigTab(ttk.Frame):
         self.build = ttk.Label(bar, text="")
         self.build.pack(side="right")
 
-        self.tree = ttk.Treeview(self, columns=self.COLS, show="tree headings", height=18)
+        # The tree must be a child of `body` (not packed into it with in_=): a
+        # sibling frame created after it stacks on top and hides it on Windows.
+        body = ttk.Frame(self)
+        body.pack(fill="both", expand=True, pady=4)
+        self.tree = ttk.Treeview(body, columns=self.COLS, show="tree headings", height=18)
         heads = {"name": ("Parameter", 130), "device": ("On board", 90), "new": ("New value", 90),
                  "unit": ("Unit", 100), "range": ("Range", 110), "default": ("Default", 80),
                  "desc": ("Description", 330)}
@@ -227,11 +231,9 @@ class ConfigTab(ttk.Frame):
         self.tree.tag_configure("changed", background="#fff3bf")
         self.tree.tag_configure("unused", foreground="#999")
         self.tree.tag_configure("error", background="#fed7d7")
-        body = ttk.Frame(self)
-        body.pack(fill="both", expand=True, pady=4)
         sb = ttk.Scrollbar(body, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(in_=body, side="left", fill="both", expand=True)
+        self.tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
         self.tree.bind("<Double-1>", self.edit_cell)
         ttk.Label(self, text="Double-click a row to edit. Yellow = not yet written. "
