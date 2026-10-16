@@ -100,7 +100,10 @@
 #endif
 
 /* Outer position loop output limit (velocity set-point, counts/s). */
-#define VEL_MAX_CPS      20000.0f  /* [runtime] */
+#define VEL_MAX_CPS      20000.0f  /* [runtime] per motor */
+/* Velocity set-point acceleration limit in VEL and POS mode (counts/s^2).
+ * POS moves also decelerate at this rate into the target. 0 = off. */
+#define ACCEL_CPS2       0.0f      /* [runtime] per motor */
 
 /* Default PID gains. Units: velocity loop = duty per (count/s),
  * position loop = (count/s) per count. Tune on the real mechanism. */
@@ -154,9 +157,18 @@
 /* Limit switches (active low, internal pull-up, switch to GND)              */
 /* ------------------------------------------------------------------------- */
 #define LIMIT_DEBOUNCE_MS    5
-/* LIMIT1 stops motor 1, LIMIT2 stops motor 2 (0-based motor index). */
+/* Default switch-to-motor pairing (0-based); LIMx_MOTOR [runtime] overrides
+ * it (1/2, 0 = switch unused). Each switch also has LIMx_END (0 = blocks the
+ * negative direction, 1 = positive), LIMx_NC (normally-closed switch) and
+ * LIMx_FAULT (1 = latch a LIMIT fault on press, the safe default when the
+ * end isn't set up yet; 0 = only block motion toward that end). */
 #define LIMIT1_MOTOR         0
 #define LIMIT2_MOTOR         1
+
+/* Homing (HOME m): run toward the motor's limit switch at HOME_VEL, set the
+ * position to HOME_OFFSET there, then move HOME_BACKOFF counts off it. */
+#define HOME_VEL_CPS         500.0f   /* [runtime] per motor */
+#define HOME_BACKOFF_COUNTS  100      /* [runtime] per motor */
 
 /* ------------------------------------------------------------------------- */
 /* PPM / RC pulse inputs (EXTI + DWT cycle counter)                          */
@@ -170,7 +182,7 @@
 /* ------------------------------------------------------------------------- */
 #define UART_BAUD            115200
 #define UART_RX_BUF          256
-#define UART_TX_BUF          2048     /* fits a full "CFG" listing */
+#define UART_TX_BUF          4096     /* fits a full "CFG" listing */
 #define CMD_LINE_MAX         96
 #define TELEM_DEFAULT_MS     50       /* [runtime] 0 = off; change at runtime with "TELEM <ms>" */
 #define CMD_WATCHDOG_MS      500      /* [runtime] 0 = disabled */

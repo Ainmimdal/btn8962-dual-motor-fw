@@ -63,9 +63,11 @@
  *     0x07 TARGET    [1..4] f32 native units: duty, counts/s or counts (no reply)
  *     0x08 ZERO      (no reply)
  *     0x09 STOP_ALL  both motors OFF (no reply)
+ *     0x0A HOME      start homing this motor (no reply; refused silently
+ *                    without a limit switch, see the status frame)
  *     status: 0 OK, 1 bad id, 2 out of range, 3 busy (motor enabled), 4 flash error
  *   0x1F (tx) every CAN_TELEM_MS:
- *     [0] 0x80 [1] mode [2] fault bits [3] limit
+ *     [0] 0x80 [1] mode [2] fault bits [3] bit0 limit, bit1 homing, bit2 homed
  *     [4..5] i16 current mA (INT16_MIN = unavailable) [6..7] i16 duty permille
  */
 #include <math.h>
@@ -208,7 +210,7 @@ static void send_heartbeat(uint8_t m)
     } else {
         /* traj_done: no trajectory planner, so "done" once a position move
          * is within STALL_COUNTS of its target (always set outside POS). */
-        bool done = s.mode != MODE_POS || fabsf(s.target - (float)s.pos) <= PRM(PRM_STALL_COUNTS);
+        bool done = s.mode != MODE_POS || fabsf(s.target - (float)s.pos) <= PRM_M(STALL_COUNTS, m);
         d[4] = (uint8_t)state;
         d[5] = motor_error(&s) != 0;
         d[6] = 0;
@@ -244,7 +246,7 @@ static void send_vendor_status(uint8_t m)
     d[0] = 0x80;
     d[1] = (uint8_t)s.mode;
     d[2] = s.faults;
-    d[3] = s.limit;
+    d[3] = (uint8_t)(s.limit | s.homing << 1 | s.homed << 2);
     memcpy(&d[4], &cur, 2);
     memcpy(&d[6], &duty, 2);
     send(m, VENDOR_TX, d, 8);
@@ -326,6 +328,9 @@ static void vendor(uint8_t m, const can_frame_t *f)
         break;
     case 0x09:
         motor_stop_all();
+        break;
+    case 0x0A:
+        motor_home(m);
         break;
     default:
         break;
@@ -461,10 +466,10 @@ static void handle(const can_frame_t *f)
         break;
     case OD_SET_LIMITS:
         if (!f->rtr && f->len >= 4) {
-            param_set(PRM_VEL_MAX, get_f32(&f->data[0]) * cpr);
+            param_set(m == 0 ? PRM_M1_VEL_MAX : PRM_M2_VEL_MAX, get_f32(&f->data[0]) * cpr);
 #if USE_CURRENT_SENSE
             if (f->len >= 8)
-                param_set(PRM_I_LIMIT, get_f32(&f->data[4]));
+                param_set(m == 0 ? PRM_M1_I_LIMIT : PRM_M2_I_LIMIT, get_f32(&f->data[4]));
 #endif
         }
         break;

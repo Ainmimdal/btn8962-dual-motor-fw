@@ -345,6 +345,17 @@ static void stdin_poll(void)
     }
 }
 
+/* Motor 1 shaft position from the encoder, independent of homing/zero. */
+static int32_t shaft1;
+static uint16_t shaft1_last;
+static void step_track(int32_t switch_below)
+{
+    step_1ms();
+    shaft1 += (int16_t)(sim_enc[0] - shaft1_last);
+    shaft1_last = sim_enc[0];
+    lim_raw[0] = shaft1 < switch_below;
+}
+
 static int selftest(void)
 {
     motor_status_t s;
@@ -367,7 +378,7 @@ static int selftest(void)
     for (int i = 0; i < 200; i++) step_1ms();
     motor_get_status(1, &s);
 #if USE_CURRENT_SENSE
-    CHECK(fabsf(s.current - PRM(PRM_I_LIMIT)) < 0.3f, "current limited during stall");
+    CHECK(fabsf(s.current - PRM(PRM_M2_I_LIMIT)) < 0.3f, "current limited during stall");
 #endif
     for (int i = 0; i < 600; i++) step_1ms();
     motor_get_status(1, &s);
@@ -381,6 +392,73 @@ static int selftest(void)
     for (int i = 0; i < 10; i++) step_1ms();
     motor_get_status(0, &s);
     CHECK(s.faults & FAULT_LIMIT, "limit switch latches fault");
+
+    /* Homing onto LIMIT1 (negative end), then the switch as a direction block. */
+    lim_raw[0] = 0;
+    for (int i = 0; i < 10; i++) step_1ms();
+    motor_clear_fault(0);
+    shaft1_last = sim_enc[0];
+    shaft1 = 0;
+    const int32_t sw = -3000;
+    PRM(PRM_M1_HOME_VEL) = 2000;
+    PRM(PRM_M1_HOME_OFFSET) = -50;
+    PRM(PRM_M1_HOME_BACKOFF) = 200;
+    CHECK(motor_home(0), "homing starts");
+    for (int i = 0; i < 5000; i++) step_track(sw);
+    motor_get_status(0, &s);
+    CHECK(s.homed && !s.homing && s.mode == MODE_POS && !s.faults, "homing finishes in POS, no fault");
+    CHECK(abs(s.pos - 150) <= 15 && !s.limit, "homed at offset + backoff, off the switch");
+    CHECK(abs((shaft1 - sw) - (s.pos + 50)) <= 15, "home position matches the switch");
+    PRM(PRM_LIM1_FAULT) = 0;
+    motor_set_mode(0, MODE_DUTY);
+    motor_set_target(0, -0.4f);
+    for (int i = 0; i < 1500; i++) step_track(sw);
+    motor_get_status(0, &s);
+    CHECK(s.limit && !s.faults && s.duty >= 0.0f, "block mode: stops at the switch without a fault");
+    CHECK(shaft1 > sw - 400, "block mode: doesn't run through the switch");
+    motor_set_target(0, 0.3f);
+    for (int i = 0; i < 300; i++) step_track(sw);
+    motor_get_status(0, &s);
+    CHECK(!s.limit && s.vel > 100.0f, "block mode: drives off the switch the other way");
+    motor_stop_all();
+    CHECK(param_set(PRM_LIM1_NC, 1) == PARAM_OK, "NC settable with motors off");
+    for (int i = 0; i < 10; i++) step_track(sw);
+    motor_get_status(0, &s);
+    CHECK(s.limit, "NC switch: open contact reads pressed");
+    param_set(PRM_LIM1_NC, 0);
+
+    /* Soft travel limit and acceleration limit. */
+    motor_zero(0);
+    PRM(PRM_M1_SOFT_LIM) = 1;
+    PRM(PRM_M1_POS_MAX) = 5000;
+    motor_set_mode(0, MODE_POS);
+    motor_set_target(0, 20000);
+    for (int i = 0; i < 3000; i++) step_track(-1000000);
+    motor_get_status(0, &s);
+    CHECK(s.pos <= 5020 && s.pos > 4900 && s.target == 5000.0f, "soft limit clamps a POS target");
+    motor_set_mode(0, MODE_DUTY);
+    motor_set_target(0, 0.5f);
+    for (int i = 0; i < 500; i++) step_track(-1000000);
+    motor_get_status(0, &s);
+    CHECK(s.pos <= 5300, "soft limit stops DUTY past POS_MAX");
+    PRM(PRM_M1_SOFT_LIM) = 0;
+    PRM(PRM_M1_ACCEL) = 10000;
+    motor_set_mode(0, MODE_OFF);
+    for (int i = 0; i < 500; i++) step_1ms();
+    motor_set_mode(0, MODE_VEL);
+    motor_set_target(0, 3000);
+    for (int i = 0; i < 100; i++) step_1ms();
+    motor_get_status(0, &s);
+    CHECK(s.vel < 1500.0f, "accel limit: still ramping after 100 ms");
+    for (int i = 0; i < 1000; i++) step_1ms();
+    motor_get_status(0, &s);
+    CHECK(fabsf(s.vel - 3000) < 150, "accel limit: reaches 3000 counts/s");
+    motor_set_mode(0, MODE_POS);
+    motor_set_target(0, s.pos + 3000);
+    for (int i = 0; i < 2500; i++) step_1ms();
+    motor_get_status(0, &s);
+    CHECK(fabsf(s.target - (float)s.pos) < 20, "accel-limited POS move settles");
+    PRM(PRM_M1_ACCEL) = 0;
     motor_stop_all();
     CHECK(param_set(PRM_M1_INVERT, 1) == PARAM_OK, "invert settable with motors off");
     CHECK(params_save() == PARAM_OK, "params saved");

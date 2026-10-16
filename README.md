@@ -52,8 +52,8 @@ LQFP48 pin numbers. Net names are as drawn on the schematic. The motor column is
 | ENC_A2 | PB6 | 42 | TIM4_CH1 | CN2-2 |
 | ENC_B2 | PB7 | 43 | TIM4_CH2 | CN2-3 |
 | ENC_Z2 | PB9 | 46 | unused | CN2-1 |
-| LIMIT1 | PB15 | 28 | input, pull-up, active low | U13, stops motor 1 |
-| LIMIT2 | PB2 | 20 | input, pull-up, active low | U15, stops motor 2 (pin is also BOOT1) |
+| LIMIT1 | PB15 | 28 | input, pull-up, active low | U13, motor 1 by default (`LIM1_MOTOR`) |
+| LIMIT2 | PB2 | 20 | input, pull-up, active low | U15, motor 2 by default (`LIM2_MOTOR`); pin is also BOOT1 |
 | STATUS | PB8 | 45 | GPIO out, **active low** | U18 green |
 | ERROR | PB5 | 41 | GPIO out, **active low** | U19 red |
 | UART_TX | PB10 | 21 | USART3_TX | U4-3 |
@@ -116,7 +116,7 @@ Only `pins.h` (the `ENC1_*` block and the unused-pin mask) and the timer instanc
 | OVERCURRENT fault | above `CURRENT_TRIP_A` for `CURRENT_TRIP_MS` | none |
 | DRIVER fault | IS at ADC full scale (BTN8962 fault signal) | none |
 | STALL fault | current ≥ `STALL_CURRENT_A` with no encoder movement for `STALL_TIMEOUT_MS` | \|duty\| ≥ `STALL_DUTY_MIN` with no encoder movement for `STALL_TIMEOUT_MS` |
-| Duty cap / ramp | `DUTY_MAX` 0.95, 20 /s | `DUTY_MAX` 0.60, 2 /s |
+| Duty cap / ramp | `Mx_DUTY_MAX` 0.95, 20 /s | `Mx_DUTY_MAX` 0.60, 2 /s |
 | Current in telemetry | mA | `NA` (never 0) |
 
 Current-sense constants in `config.h`:
@@ -140,7 +140,7 @@ These values can be changed while the board runs:
 - the CAN node IDs, bit rate and message rates,
 - the encoder resolution, gear ratio and encoder location (see below).
 
-**Encoder and gearbox.** Per motor: `ENCx_CPR` is counts per turn of the shaft the encoder is on (4 × the datasheet PPR or lines), `Mx_GEAR` is motor turns per output turn (30 for 30:1), and `ENCx_ON_OUTPUT` is 1 when the encoder sits on the output shaft, so the gear ratio doesn't apply. Together they give counts per output turn: `ENCx_CPR × Mx_GEAR` with the encoder on the motor, `ENCx_CPR` on the output. Control, the UART protocol, `VEL_MAX`, `STALL_COUNTS` and the PID gains stay in counts, so changing these never retunes anything. They set the CAN "turns", and the GUI shows and takes output degrees and RPM once counts per output turn is no longer 1.
+**Encoder and gearbox.** Per motor: `ENCx_CPR` is counts per turn of the shaft the encoder is on (4 × the datasheet PPR or lines), `Mx_GEAR` is motor turns per output turn (30 for 30:1), and `ENCx_ON_OUTPUT` is 1 when the encoder sits on the output shaft, so the gear ratio doesn't apply. Together they give counts per output turn: `ENCx_CPR × Mx_GEAR` with the encoder on the motor, `ENCx_CPR` on the output. Control, the UART protocol, `Mx_VEL_MAX`, `Mx_ACCEL`, `Mx_STALL_COUNTS`, the travel and homing settings and the PID gains stay in counts, so changing these never retunes anything. They set the CAN "turns", and the GUI shows and takes output degrees and RPM once counts per output turn is no longer 1.
 
 Their defaults are the `config.h` values marked `[runtime]`. Change them with `CFG` on UART, the CAN vendor commands, or the GUI's Configuration tab. `SAVE` writes them to the last 1 KB flash page (0x0800FC00) and they load at boot; a blank or corrupt page falls back to the defaults. Settings saved by older firmware still load, and settings added since then start at their defaults.
 
@@ -152,15 +152,20 @@ Their defaults are the `config.h` values marked `[runtime]`. Change them with `C
 
 Each motor runs a cascade at 1 kHz:
 
-- **POS:** target counts → position PID → velocity set-point (clamped to ±`VEL_MAX_CPS`) → velocity PID → duty
+- **POS:** target counts → position PID → velocity set-point (clamped to ±`Mx_VEL_MAX`) → velocity PID → duty
 - **VEL:** target counts/s → velocity PID → duty
 - **DUTY:** target in [-1, 1] → duty
 
+With `Mx_ACCEL` > 0 the velocity set-point is slewed at that rate (counts/s²) in VEL and POS, and a POS move is also capped at √(2 × ACCEL × distance left), so it decelerates into the target (a trapezoidal move).
+
 The duty is then limited, in this order:
 
-1. `DUTY_MAX`
+1. `Mx_DUTY_MAX`
 2. The current limiter (when `USE_CURRENT_SENSE=1`)
-3. The `DUTY_RAMP_PER_S` slew window
+3. The `Mx_DUTY_RAMP` slew window
+4. A direction block: a pressed limit switch in block mode, or a soft travel limit, stops motion toward that end at once (no ramp) and still allows the other direction
+
+The duty, speed, current and stall limits are separate settings for each motor (`M1_…`, `M2_…`). `I_TRIP_MS` and `STALL_MS` are shared.
 
 The PIDs use derivative on measurement and conditional integration, so the integrator stops while the output is pinned by any of these limits.
 
@@ -177,7 +182,17 @@ Drive is sign-magnitude. The forward side PWMs while the other side's low switch
 
 `MODE` is then refused (`ERR FAULT_LATCHED`) until you send `CLR <n>`.
 
-**Limit switch:** the fault is edge-triggered, so after `CLR` the motor can be driven back off the switch. `CLR` answers `OK LIMIT_STILL_PRESSED` if the switch is still pressed. A switch that is pressed at power-up latches a fault.
+**Limit switches:** each of LIMIT1/LIMIT2 has four settings:
+- `LIMx_MOTOR`: the motor it belongs to (1 or 2, 0 = unused).
+- `LIMx_END`: which end it guards, 0 = negative direction, 1 = positive.
+- `LIMx_NC`: 1 for a normally-closed switch (a broken wire then reads as pressed).
+- `LIMx_FAULT`: 1 (default) latches a LIMIT fault on the press, whichever way the motor was going; 0 only blocks motion toward `LIMx_END`, with no fault, so the motor can drive straight back off it. Set `LIMx_END` correctly before choosing 0.
+
+In fault mode the fault is edge-triggered, so after `CLR` the motor can be driven back off the switch. `CLR` answers `OK LIMIT_STILL_PRESSED` if the switch is still pressed. A switch that is pressed at power-up latches a fault.
+
+**Homing:** `HOME <m>` runs the motor in VEL mode at `Mx_HOME_VEL` toward its switch (the negative-end one if it has two). When the switch is pressed, the position becomes `Mx_HOME_OFFSET`, and the motor moves `Mx_HOME_BACKOFF` counts back off the switch in POS mode and holds there. `GET <m>` shows `HOME=RUNNING`, `DONE` or `NO`. Any `MODE`, `SET` or fault cancels it; `ERR NO_SWITCH` means no switch is assigned to that motor. Homing ignores the soft limits, and the homing switch doesn't fault while homing.
+
+**Soft travel limits:** with `Mx_SOFT_LIM` = 1, POS targets are clamped to `Mx_POS_MIN`…`Mx_POS_MAX`, and every mode is blocked from driving past them. They are in counts from wherever position 0 is, so home or `ZERO` first.
 
 **Command watchdog:** if no valid command arrives on UART, and no frame arrives for either CAN node, for `WDG_MS` (default 500 ms) while a motor is enabled, both motors go to OFF and `EVT WATCHDOG STOP` is printed. This is not latched; send `MODE` again to resume. Set `WDG_MS` to 0 to disable it. The GUI keeps it fed with `PING` while connected.
 
@@ -197,6 +212,7 @@ One command per line. Commands are case-insensitive, motors are `1` or `2`, and 
 | `GET STAT` | Uptime, control ticks, overruns, UART drops, CAN ESR |
 | `CLR <m>\|ALL` | Clear latched faults |
 | `ZERO <m>` | Set position to 0 |
+| `HOME <m>` | Home onto the motor's limit switch (`ERR NO_SWITCH` if it has none) |
 | `STOP` | Both motors OFF |
 | `PING` | Keep the watchdog alive |
 | `TELEM <ms>` | Telemetry period (0 = off, default 50) |
@@ -209,8 +225,10 @@ One command per line. Commands are case-insensitive, motors are `1` or `2`, and 
 **Telemetry line:**
 
 ```
-T,<ms>,<pos1>,<vel1>,<cur1_mA|NA>,<duty1_permille>,<mode1 O/D/V/P>,<faults1 hex>,<pos2>,...,<faults2>,<ppm1_us>,<ppm2_us>,<limit bits>
+T,<ms>,<pos1>,<vel1>,<cur1_mA|NA>,<duty1_permille>,<mode1 O/D/V/P>,<faults1 hex>,<pos2>,...,<faults2>,<ppm1_us>,<ppm2_us>,<limit bits>,<home bits>
 ```
+
+Limit bits: bit 0 motor 1, bit 1 motor 2. Home bits: bit 0/1 homing motor 1/2, bit 2/3 homed motor 1/2.
 
 **Fault bits:** 0x01 OC, 0x02 STALL, 0x04 LIMIT, 0x08 DRIVER, 0x10 ESTOP.
 
@@ -239,7 +257,7 @@ The board uses ODrive's "CAN Simple" protocol from firmware 0.5.1 to 0.5.6, so i
 | 0x0A | Get encoder count | i32 count, i32 count modulo CPR. |
 | 0x0B | Set controller mode | Control mode 0 voltage → DUTY, 2 velocity → VEL, 3 position → POS (the default, as on ODrive). Torque control (1) is ignored, because there is no current loop. The input mode is ignored and always works as passthrough. |
 | 0x0C, 0x0D, 0x0E | Set input pos, vel, torque | Applied when the motor runs in the matching mode. Feed-forward terms are ignored. |
-| 0x0F | Set limits | Velocity limit → `VEL_MAX`. The 0.5.6 current limit → `I_LIMIT`. Both settings are shared by the two motors. |
+| 0x0F | Set limits | Velocity limit → `Mx_VEL_MAX`. The 0.5.6 current limit → `Mx_I_LIMIT`. Both apply to the addressed motor only. |
 | 0x14 | Get Iq | Setpoint is NaN. Measured is the motor current, or NaN without current sense. |
 | 0x15, 0x17, 0x1C | Get sensorless estimates, bus voltage, ADC voltage | NaN. The board doesn't measure these. |
 | 0x16 | Reboot | Motors off, then MCU reset. |
@@ -261,8 +279,9 @@ The board uses ODrive's "CAN Simple" protocol from firmware 0.5.1 to 0.5.6, so i
 | 06 | MODE: 0 OFF, 1 DUTY, 2 VEL, 3 POS | none |
 | 07 | TARGET: f32 in native units (duty, counts/s or counts) | none |
 | 08 / 09 | ZERO this motor / STOP both motors | none |
+| 0A | HOME this motor | none (progress in the status frame) |
 
-The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 4 flash error. Every `CAN_TELEM_MS` (100 ms), each node also sends a 0x1F status frame: `80`, mode, fault bits, limit, i16 current mA (`INT16_MIN` = unavailable), i16 duty ‰.
+The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 4 flash error. Every `CAN_TELEM_MS` (100 ms), each node also sends a 0x1F status frame: `80`, mode, fault bits, limit/home byte (bit 0 limit pressed, bit 1 homing, bit 2 homed), i16 current mA (`INT16_MIN` = unavailable), i16 duty ‰.
 
 `tools/board_sim/test_can_odrive.py` drives the simulated board with plain ODrive frames while a simulated ODrive shares the bus (see Simulated board).
 
@@ -318,7 +337,7 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 ## Assumptions
 
 - **Driver chip.** The fitted drivers are BTN8962TA (all four parts on the schematic are BTN8962TAAUMA1; only the title block says btn7971). `IS_KILIS = 19500` is the typical datasheet ratio and should be calibrated in step 4.
-- **Limit switches.** LIMIT1 stops motor 1 and LIMIT2 stops motor 2. Each switch closes to GND.
+- **Limit switches.** By default LIMIT1 faults motor 1 and LIMIT2 faults motor 2 (motor numbers after `SWAP_BRIDGES`). Each switch closes to GND, or opens with `LIMx_NC` = 1.
 - **Encoders.** These are quadrature encoders read at x4. All native units are counts. `ENCx_CPR`, `Mx_GEAR` and `ENCx_ON_OUTPUT` only scale the ODrive "turns" on CAN and the GUI's degrees/RPM.
 - **PPM.** PPM inputs are measured and reported only (`GET PPM`, telemetry). Nothing is controlled from them yet.
 - **CAN.** The protocol follows ODrive CAN Simple 0.5.x. Default node IDs are 40 and 41, the default bit rate is 125 kbit/s, and the vendor commands use 0x1E/0x1F.
@@ -360,7 +379,7 @@ This needs Python 3.9+ with Tkinter. It runs on Windows, macOS and Linux.
 - **Keep-alive:** sends `PING` every 200 ms so the command watchdog doesn't stop the motors. If the GUI freezes or the cable comes out, the motors stop.
 - **STOP ALL / Esc:** sends STOP at any time.
 
-**Control tab:** live position, velocity, current and duty for each motor, plus faults and the limit switch. It has mode buttons, a target entry and slider, Zero and Clear fault, and a 10 s plot of either motor's velocity, position, current or duty.
+**Control tab:** live position, velocity, current and duty for each motor, plus faults, the limit switch and homing state. It has mode buttons, a target entry and slider, Zero, Clear fault and Home, and a 10 s plot of either motor's velocity, position, current or duty.
 
 **Configuration tab:** every runtime setting, with the board's value, range, default and a description.
 - Double-click a row to edit it, then press **Write changes** to apply.

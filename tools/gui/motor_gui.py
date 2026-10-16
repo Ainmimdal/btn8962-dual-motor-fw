@@ -34,12 +34,13 @@ class MotorPanel(ttk.LabelFrame):
         self.app, self.m = app, m
         self.mode = tk.IntVar(value=0)
         self.vals = {k: tk.StringVar(value="-") for k in
-                     ("mode", "pos", "vel", "cur", "duty", "faults", "limit")}
+                     ("mode", "pos", "vel", "cur", "duty", "faults", "limit", "home")}
 
         grid = ttk.Frame(self)
         grid.grid(row=0, column=0, columnspan=2, sticky="ew")
         labels = [("Mode", "mode"), ("Position", "pos"), ("Velocity", "vel"),
-                  ("Current", "cur"), ("Duty", "duty"), ("Faults", "faults"), ("Limit", "limit")]
+                  ("Current", "cur"), ("Duty", "duty"), ("Faults", "faults"), ("Limit", "limit"),
+                  ("Home", "home")]
         for i, (text, key) in enumerate(labels):
             ttk.Label(grid, text=text + ":").grid(row=i, column=0, sticky="w")
             lbl = ttk.Label(grid, textvariable=self.vals[key], width=16, font=("TkFixedFont", 11))
@@ -74,6 +75,7 @@ class MotorPanel(ttk.LabelFrame):
         btns.grid(row=4, column=0, columnspan=2, sticky="w")
         ttk.Button(btns, text="Zero position", command=lambda: app.cmd("zero", m)).pack(side="left")
         ttk.Button(btns, text="Clear fault", command=lambda: app.cmd("clear", m)).pack(side="left", padx=4)
+        ttk.Button(btns, text="Home", command=lambda: app.cmd("home", m)).pack(side="left")
         self.columnconfigure(0, weight=1)
         self._set_slider_range()
 
@@ -83,7 +85,7 @@ class MotorPanel(ttk.LabelFrame):
         if mode == 1:
             lo, hi, unit = -1.0, 1.0, "duty -1..1"
         elif mode == 2:
-            vmax = self.app.param_value("VEL_MAX") or 20000.0
+            vmax = self.app.param_value(f"M{self.m + 1}_VEL_MAX") or 20000.0
             if scaled:
                 vmax, unit = vmax / cpt * 60.0, "RPM (output)"
             else:
@@ -145,6 +147,7 @@ class MotorPanel(ttk.LabelFrame):
         self.vals["faults"].set(fault_text(t["faults"]))
         self.fault_lbl.configure(foreground="#c53030" if t["faults"] else "")
         self.vals["limit"].set("PRESSED" if t["limit"] else "released")
+        self.vals["home"].set("homing..." if t.get("homing") else "done" if t.get("homed") else "not homed")
         if t["mode"] != self.mode.get() and t["mode"] < 4:
             # the board changed mode on its own (fault, watchdog, STOP)
             self.mode.set(t["mode"])
@@ -610,7 +613,7 @@ class App(tk.Tk):
                     if not st:
                         changed = self.params.get(pid) != val
                         self.params[pid] = val
-                        if changed and pid in UNIT_PARAMS | {BY_NAME["VEL_MAX"][0]}:
+                        if changed and pid in UNIT_PARAMS | {BY_NAME["M1_VEL_MAX"][0], BY_NAME["M2_VEL_MAX"][0]}:
                             for panel in self.motors:
                                 panel._set_slider_range()
                     self.config_tab.on_param(pid, val, st)

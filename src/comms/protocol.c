@@ -125,8 +125,9 @@ static void cmd_get_motor(uint8_t m)
     fmt_float(duty, sizeof duty, s.duty, 3);
     fmt_float(tgt, sizeof tgt, s.target, 3);
     fault_names(fn, sizeof fn, s.faults);
-    outf("OK M%u MODE=%s POS=%" PRId32 " VEL=%s CUR=%s DUTY=%s TGT=%s FAULT=%s LIM=%u",
-         m + 1, mode_names[s.mode], s.pos, vel, cur, duty, tgt, fn, s.limit ? 1u : 0u);
+    outf("OK M%u MODE=%s POS=%" PRId32 " VEL=%s CUR=%s DUTY=%s TGT=%s FAULT=%s LIM=%u HOME=%s",
+         m + 1, mode_names[s.mode], s.pos, vel, cur, duty, tgt, fn, s.limit ? 1u : 0u,
+         s.homing ? "RUNNING" : s.homed ? "DONE" : "NO");
     if (m == 0) {
         uint16_t idx;
         if (encoder1_index(&idx))
@@ -142,7 +143,7 @@ static void cmd_help(void)
         "  SET <m> <target>        duty -1..1 | counts/s | counts\r\n"
         "  PID <m> VEL|POS [kp ki kd]\r\n"
         "  GET <m> | GET PPM | GET STAT\r\n"
-        "  CLR <m>|ALL   ZERO <m>   STOP   PING\r\n"
+        "  CLR <m>|ALL   ZERO <m>   HOME <m>   STOP   PING\r\n"
         "  TELEM <ms>    (0 = off)   VER   HELP\r\n"
         "  CFG [name [value]]   SAVE   DEFAULTS\r\n");
 }
@@ -283,6 +284,15 @@ static bool handle(char **tok, int n)
             return false;
         motor_zero(m);
         out("OK\r\n");
+    } else if (strcmp(tok[0], "HOME") == 0) {
+        if (n != 2 || !parse_motor(tok[1], &m))
+            return false;
+        motor_status_t s;
+        motor_get_status(m, &s);
+        if (s.faults)
+            out("ERR FAULT_LATCHED\r\n");
+        else
+            out(motor_home(m) ? "OK\r\n" : "ERR NO_SWITCH\r\n");
     } else if (strcmp(tok[0], "TELEM") == 0) {
         if (n != 2 || !fmt_parse_float(tok[1], &v) || v < 0.0f || v > 60000.0f)
             return false;
@@ -351,7 +361,7 @@ void protocol_poll(void)
 static void telemetry(uint32_t now)
 {
     char buf[200];
-    unsigned lim = 0;
+    unsigned lim = 0, home = 0;
     size_t n = (size_t)snprintf(buf, sizeof buf, "T,%" PRIu32, now);
 
     for (uint8_t m = 0; m < NUM_MOTORS; m++) {
@@ -360,6 +370,7 @@ static void telemetry(uint32_t now)
         motor_get_status(m, &s);
         if (s.limit)
             lim |= 1u << m;
+        home |= (s.homing ? 1u : 0u) << m | (s.homed ? 4u : 0u) << m;
         if (s.current_valid)
             snprintf(cur, sizeof cur, "%" PRId32, (int32_t)(s.current * 1000.0f));
         else
@@ -368,7 +379,8 @@ static void telemetry(uint32_t now)
                               s.pos, (int32_t)s.vel, cur, (int)(s.duty * 1000.0f),
                               mode_names[s.mode][0], s.faults);
     }
-    n += (size_t)snprintf(buf + n, sizeof buf - n, ",%u,%u,%u\r\n", ppm_get_us(0), ppm_get_us(1), lim);
+    n += (size_t)snprintf(buf + n, sizeof buf - n, ",%u,%u,%u,%u\r\n", ppm_get_us(0), ppm_get_us(1),
+                          lim, home);
     uart_write(buf, n < sizeof buf ? n : sizeof buf - 1);
 }
 

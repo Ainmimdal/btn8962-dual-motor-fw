@@ -31,7 +31,9 @@ typedef struct {
     bool current_valid;     /* false when USE_CURRENT_SENSE = 0 */
     float duty;             /* applied duty, [-1, 1] */
     float target;           /* duty, counts/s or counts depending on mode */
-    bool limit;             /* debounced limit switch state */
+    bool limit;             /* a limit switch for this motor is pressed */
+    bool homing;            /* HOME in progress */
+    bool homed;             /* HOME finished since boot */
 } motor_status_t;
 
 void motor_init(void);
@@ -46,6 +48,9 @@ void motor_get_gains(uint8_t m, loop_id_t loop, float *kp, float *ki, float *kd)
 /* Clear latched faults. Returns true if the limit switch is still pressed
  * (the limit fault is edge-triggered, so the motor can be driven off it). */
 bool motor_clear_fault(uint8_t m);
+/* Start homing toward the motor's limit switch (LIMx_MOTOR). False if the
+ * motor has no switch or a fault is latched. Any MODE/target cancels it. */
+bool motor_home(uint8_t m);
 /* Redefine the current position as 0 (position target shifts with it). */
 void motor_zero(uint8_t m);
 void motor_stop_all(void);

@@ -68,6 +68,7 @@ class UartLink(Link):
     def set_target(self, m, v): self.send(f"SET {m + 1} {v:.6g}")
     def clear(self, m=None): self.send("CLR ALL" if m is None else f"CLR {m + 1}")
     def zero(self, m): self.send(f"ZERO {m + 1}")
+    def home(self, m): self.send(f"HOME {m + 1}")
     def stop(self): self.send("STOP")
     def ping(self): self.send("PING", log=False)
     def info(self): self.send("VER")
@@ -127,8 +128,9 @@ class UartLink(Link):
 
     def _telem(self, t):
         f = t.split(",")
-        # T,ms, then 6 fields per motor, then ppm1, ppm2[, limit bits]
+        # T,ms, then 6 fields per motor, then ppm1, ppm2[, limit bits[, home bits]]
         lim = int(f[16]) if len(f) > 16 else 0
+        home = int(f[17]) if len(f) > 17 else 0
         for m in range(2):
             pos, vel, cur, duty, mode, faults = f[2 + 6 * m: 8 + 6 * m]
             self.emit("telem", m, {
@@ -137,6 +139,7 @@ class UartLink(Link):
                 "duty": int(duty) / 1000.0,
                 "mode": "ODVP".index(mode), "faults": int(faults, 16),
                 "limit": bool(lim >> m & 1),
+                "homing": bool(home >> m & 1), "homed": bool(home >> (2 + m) & 1),
             })
         self.emit("ppm", int(f[14]), int(f[15]))
 
@@ -144,7 +147,7 @@ class UartLink(Link):
 # ---------------------------------------------------------------------- CAN
 # ODrive CAN Simple command IDs used here (ID = node << 5 | cmd)
 OD_HEARTBEAT, OD_ESTIMATES, OD_CLEAR, VENDOR_REQ, VENDOR_TX = 0x01, 0x09, 0x18, 0x1E, 0x1F
-V_SET, V_GET, V_SAVE, V_DEFAULTS, V_INFO, V_MODE, V_TARGET, V_ZERO, V_STOP = range(1, 10)
+V_SET, V_GET, V_SAVE, V_DEFAULTS, V_INFO, V_MODE, V_TARGET, V_ZERO, V_STOP, V_HOME = range(1, 11)
 V_STATUS = 0x80
 NODE_PARAMS = {29: 0, 30: 1}      # M1_NODE_ID, M2_NODE_ID
 
@@ -192,6 +195,7 @@ class CanLink(Link):
     def set_mode(self, m, mode): self._vendor(m, V_MODE, [mode])
     def set_target(self, m, v): self._vendor(m, V_TARGET, struct.pack("<f", v))
     def zero(self, m): self._vendor(m, V_ZERO)
+    def home(self, m): self._vendor(m, V_HOME)
     def stop(self): self._vendor(0, V_STOP)
     def ping(self): self._send(0, OD_HEARTBEAT, rtr=True, log=False)
     def info(self): self._vendor(0, V_INFO)
@@ -261,7 +265,8 @@ class CanLink(Link):
             self.emit("telem", m, {
                 "pos": pos, "vel": float(vel),
                 "cur": None if cur == -32768 else cur / 1000.0,
-                "duty": duty / 1000.0, "mode": d[1], "faults": d[2], "limit": bool(d[3]),
+                "duty": duty / 1000.0, "mode": d[1], "faults": d[2], "limit": bool(d[3] & 1),
+                "homing": bool(d[3] & 2), "homed": bool(d[3] & 4),
             })
             return
         if sub == V_INFO:
