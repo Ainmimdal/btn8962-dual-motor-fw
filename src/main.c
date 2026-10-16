@@ -104,15 +104,20 @@ int main(void)
         can_proto_poll(now);
 
         /* Command watchdog: no valid command for WDG_MS stops both motors. */
+        /* Read the tick after the last-command time: a command handled in
+         * protocol_poll() can stamp a tick newer than `now`, and `now - last`
+         * would then wrap to ~4e9 and trip the watchdog at once. */
         uint32_t wdg_ms = (uint32_t)PRM(PRM_WDG_MS);
-        if (wdg_ms && motor_any_enabled() && now - protocol_last_cmd_ms() > wdg_ms) {
+        uint32_t last_cmd = protocol_last_cmd_ms();
+        uint32_t since_cmd = HAL_GetTick() - last_cmd;
+        if (wdg_ms && motor_any_enabled() && since_cmd > wdg_ms) {
             motor_stop_all();
             if (!wdg_tripped) {
                 uart_puts("EVT WATCHDOG STOP\r\n");
                 can_proto_note_watchdog();
             }
             wdg_tripped = true;
-        } else if (now - protocol_last_cmd_ms() <= wdg_ms) {
+        } else if (since_cmd <= wdg_ms) {
             wdg_tripped = false;
         }
 
