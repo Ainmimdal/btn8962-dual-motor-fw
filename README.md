@@ -29,7 +29,7 @@ dual-motor-fw/
 
 ## Pin map
 
-LQFP48 pin numbers. Net names are as drawn on the schematic. The motor column is as drawn too; the default build sets `SWAP_BRIDGES=1` (include/config.h), so motor 1 actually drives the U2/U3 bridge (OUT3/OUT4, the terminals marked M2 on the built board) and motor 2 drives U6/U8 (OUT1/OUT2). Encoders do not move: motor 1 always uses encoder 1.
+LQFP48 pin numbers. Net names are as drawn on the schematic. The motor column is as drawn too; the default build sets `SWAP_BRIDGES=1` (include/config.h), so motor 1 actually drives the U2/U3 bridge (OUT3/OUT4, the terminals marked M2 on the built board) and motor 2 drives U6/U8 (OUT1/OUT2). The encoders are swapped the same way (`SWAP_ENCODERS=1`): motor 1 reads CN2 (TIM4, PB6/PB7) and motor 2 reads CN1 (PA6/PA7 or PA8/PA9 per `ENC1_CONFIG`). The ENC1_/ENC2_ settings follow the motor number. So on the built board, the M1 terminals and M1 encoder port are motor 1, and the M2 ones are motor 2.
 
 | Net | MCU pin | Pin # | Function in firmware | Notes |
 |---|---|---|---|---|

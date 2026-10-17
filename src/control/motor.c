@@ -213,7 +213,7 @@ void motor_init(void)
         pid_init(&M->vel_pid, 0.0f, 0.0f, 0.0f);
         pid_init(&M->pos_pid, 0.0f, 0.0f, 0.0f);
         load_gains(m);
-        M->enc_last = encoder_raw(m);
+        M->enc_last = encoder_raw(MOTOR_ENCODER(m));
         M->cl_max = PRM_M(DUTY_MAX, m);
         M->mode = MODE_OFF;
     }
@@ -239,7 +239,7 @@ void control_tick(void)
         const float accel = PRM_M(ACCEL, m);
 
         /* ---- Measurements ---- */
-        uint16_t cnt = encoder_raw(m);
+        uint16_t cnt = encoder_raw(MOTOR_ENCODER(m));
         int16_t d = (int16_t)(cnt - M->enc_last);
         M->enc_last = cnt;
         const bool motor_inv = PRM(m == 0 ? PRM_M1_INVERT : PRM_M2_INVERT) > 0.5f;

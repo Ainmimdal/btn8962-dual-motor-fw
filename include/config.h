@@ -10,6 +10,7 @@
  *                      0           = no IS ADC, encoder-based stall check, duty cap + ramp
  *   SWAP_BRIDGES       1 (default) = motor 1 drives the U2/U3 bridge (OUT3/OUT4),
  *                      motor 2 the U6/U8 bridge (OUT1/OUT2); 0 = as drawn
+ *   SWAP_ENCODERS      1 (default) = motor 1 reads CN2, motor 2 reads CN1; 0 = as drawn
  */
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -38,6 +39,16 @@
 #define SWAP_BRIDGES 1
 #endif
 #define MOTOR_BRIDGE(m) ((uint8_t)((m) ^ (SWAP_BRIDGES ? 1u : 0u)))
+
+/* Which encoder connector each motor reads. The built board's labels are
+ * reversed against the schematic for the encoders too, so by default motor 1
+ * reads CN2 (TIM4, PB6/PB7) and motor 2 reads CN1 (encoder "1" hardware,
+ * ENC1_CONFIG). ENCx_INVERT / ENCx_CPR / ENCx_ON_OUTPUT follow the motor
+ * number, not the connector. */
+#ifndef SWAP_ENCODERS
+#define SWAP_ENCODERS 1
+#endif
+#define MOTOR_ENCODER(m) ((uint8_t)((m) ^ (SWAP_ENCODERS ? 1u : 0u)))
 
 /* Optional Z index for encoder 1 on PA8 (only possible in ENC1_ON_TIM3_3V3,
  * because PA8 is encoder A in ENC1_ON_TIM1). Latches the position on a rising
