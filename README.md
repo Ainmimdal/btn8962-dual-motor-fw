@@ -380,7 +380,7 @@ This needs Python 3.9+ with Tkinter. It runs on Windows, macOS and Linux.
 - **Keep-alive:** sends `PING` every 200 ms so the command watchdog doesn't stop the motors. If the GUI freezes or the cable comes out, the motors stop.
 - **STOP ALL / Esc:** sends STOP at any time.
 
-**Control tab:** live position, velocity, current and duty for each motor, plus faults, the limit switch and homing state. It has mode buttons, a target entry and slider, Zero, Clear fault and Home, and a 10 s plot of either motor's velocity, position, current or duty.
+**Control tab:** live position, velocity, current and duty for each motor, plus faults, the limit switch and homing state. It has mode buttons, one target box and slider per mode (only the active mode's is shown; duty in %), Zero, Clear fault and Home, and a 10 s plot of either motor's velocity, position, current or duty.
 
 **Configuration tab:** every runtime setting, with the board's value, range, default and a description.
 - Double-click a row to edit it, then press **Write changes** to apply.

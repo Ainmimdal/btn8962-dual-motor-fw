@@ -28,6 +28,70 @@ KEEPALIVE_S = 0.2
 MOTOR_COLORS = ["#2b6cb0", "#c05621"]
 
 
+class TargetRow(ttk.Frame):
+    """Entry + Send + slider for one mode. The slider sends while dragged
+    (20/s max) and once more on release; the entry sends on Enter/Send."""
+
+    def __init__(self, master, name, send):
+        super().__init__(master)
+        self.send = send
+        self.var = tk.StringVar(value="0")
+        top = ttk.Frame(self)
+        top.pack(fill="x")
+        ttk.Label(top, text=f"{name} target:").pack(side="left")
+        e = ttk.Entry(top, textvariable=self.var, width=10)
+        e.pack(side="left", padx=4)
+        e.bind("<Return>", lambda _e: self.on_entry())
+        ttk.Button(top, text="Send", command=self.on_entry).pack(side="left")
+        self.unit = ttk.Label(top, text="")
+        self.unit.pack(side="left", padx=4)
+        ttk.Button(top, text="0", width=3, command=lambda: self.set_value(0.0, send=True)).pack(side="right")
+        # tk.Scale, not ttk.Scale: a click on the ttk trough jumps to the end
+        # of the range on Windows, which made targets snap to the limit.
+        self.scale = tk.Scale(self, orient="horizontal", showvalue=False, from_=-1, to=1,
+                              resolution=0.01, command=self.on_drag, highlightthickness=0)
+        self.scale.pack(fill="x", pady=(2, 0))
+        self.scale.bind("<ButtonRelease-1>", lambda _e: self.on_release())
+        self._quiet = False
+        self._last = 0.0
+
+    def configure_range(self, lo, hi, res, unit):
+        self._quiet = True
+        self.scale.configure(from_=lo, to=hi, resolution=res)
+        self._quiet = False
+        self.unit.configure(text=unit)
+
+    def set_value(self, v, send=False):
+        self.var.set(f"{v:.6g}")
+        self._quiet = True
+        self.scale.set(v)
+        self._quiet = False
+        if send:
+            self.send(v)
+
+    def on_entry(self):
+        try:
+            v = float(self.var.get())
+        except ValueError:
+            return
+        self.set_value(v, send=True)
+
+    def on_drag(self, _v):
+        if self._quiet:
+            return
+        v = float(self.scale.get())
+        self.var.set(f"{v:.6g}")
+        now = time.monotonic()
+        if now - self._last >= 0.05:
+            self._last = now
+            self.send(v)
+
+    def on_release(self):
+        v = float(self.scale.get())
+        self.var.set(f"{v:.6g}")
+        self.send(v)
+
+
 class MotorPanel(ttk.LabelFrame):
     def __init__(self, master, app, m):
         super().__init__(master, text=f"Motor {m + 1}", padding=8)
@@ -54,22 +118,18 @@ class MotorPanel(ttk.LabelFrame):
             ttk.Radiobutton(modes, text=name, value=i, variable=self.mode,
                             command=self.on_mode).pack(side="left", padx=2)
 
-        tgt = ttk.Frame(self)
-        tgt.grid(row=2, column=0, columnspan=2, sticky="ew")
-        ttk.Label(tgt, text="Target:").pack(side="left")
-        self.target = tk.StringVar(value="0")
-        e = ttk.Entry(tgt, textvariable=self.target, width=12)
-        e.pack(side="left", padx=4)
-        e.bind("<Return>", lambda _e: self.on_send())
-        ttk.Button(tgt, text="Send", command=self.on_send).pack(side="left")
-        self.unit = ttk.Label(tgt, text="")
-        self.unit.pack(side="left", padx=4)
-
-        self.slider_var = tk.DoubleVar(value=0.0)
-        self.slider = ttk.Scale(self, from_=-1.0, to=1.0, variable=self.slider_var,
-                                command=self.on_slider)
-        self.slider.grid(row=3, column=0, columnspan=2, sticky="ew", pady=4)
-        self._last_slider_send = 0.0
+        # One target row per mode; only the active mode's row is shown, and
+        # each keeps its own value (telemetry never writes into them).
+        self.rows = {}
+        for mode, name in ((1, "Duty"), (2, "Velocity"), (3, "Position")):
+            row = TargetRow(self, name, lambda v, mode=mode: self.send_target(mode, v))
+            row.grid(row=2, column=0, columnspan=2, sticky="ew", pady=4)
+            self.rows[mode] = row
+        self.off_hint = ttk.Label(self, text="Pick DUTY, VEL or POS to set a target.",
+                                  foreground="#666")
+        self.off_hint.grid(row=2, column=0, columnspan=2, sticky="w", pady=4)
+        self._mode_sent_t = 0.0
+        self._last_pos_u = 0.0
 
         btns = ttk.Frame(self)
         btns.grid(row=4, column=0, columnspan=2, sticky="w")
@@ -77,62 +137,50 @@ class MotorPanel(ttk.LabelFrame):
         ttk.Button(btns, text="Clear fault", command=lambda: app.cmd("clear", m)).pack(side="left", padx=4)
         ttk.Button(btns, text="Home", command=lambda: app.cmd("home", m)).pack(side="left")
         self.columnconfigure(0, weight=1)
-        self._set_slider_range()
+        self.refresh_units()
+        self._show_row()
 
-    def _set_slider_range(self):
-        mode = self.mode.get()
+    def refresh_units(self):
+        """Ranges and units of the three rows (after unit or VEL_MAX changes)."""
         cpt, scaled = self.app.counts_per_turn(self.m)
-        if mode == 1:
-            lo, hi, unit = -1.0, 1.0, "duty -1..1"
-        elif mode == 2:
-            vmax = self.app.param_value(f"M{self.m + 1}_VEL_MAX") or 20000.0
-            if scaled:
-                vmax, unit = vmax / cpt * 60.0, "RPM (output)"
-            else:
-                unit = "counts/s"
-            lo, hi = -vmax, vmax
-        elif mode == 3:
-            span, unit = (3600.0, "deg (output)") if scaled else (50000.0, "counts")
-            lo, hi = -span, span
+        self.rows[1].configure_range(-100.0, 100.0, 1.0, "% duty")
+        vmax = self.app.param_value(f"M{self.m + 1}_VEL_MAX") or 20000.0
+        if scaled:
+            v = vmax / cpt * 60.0
+            self.rows[2].configure_range(-v, v, max(v / 200.0, 0.1), "RPM (output)")
+            self.rows[3].configure_range(-3600.0, 3600.0, 1.0, "deg (output)")
         else:
-            lo, hi, unit = -1.0, 1.0, ""
-        self.slider.configure(from_=lo, to=hi)
-        self.slider_var.set(0.0)
-        self.unit.configure(text=unit)
+            self.rows[2].configure_range(-vmax, vmax, max(round(vmax / 200.0), 1), "counts/s")
+            self.rows[3].configure_range(-50000.0, 50000.0, 10.0, "counts")
+
+    def _show_row(self):
+        mode = self.mode.get()
+        for k, row in self.rows.items():
+            row.grid() if k == mode else row.grid_remove()
+        self.off_hint.grid() if mode == 0 else self.off_hint.grid_remove()
 
     def on_mode(self):
-        self.app.cmd("set_mode", self.m, self.mode.get())
-        self.target.set("0")
-        self._set_slider_range()
+        mode = self.mode.get()
+        self._mode_sent_t = time.monotonic()
+        self.app.cmd("set_mode", self.m, mode)
+        # The board starts each mode at duty 0 / speed 0 / holding position.
+        if mode in (1, 2):
+            self.rows[mode].set_value(0.0)
+        elif mode == 3:
+            self.rows[3].set_value(self._last_pos_u)
+        self._show_row()
 
-    def on_send(self):
-        try:
-            v = float(self.target.get())
-        except ValueError:
-            self.app.status(f"Motor {self.m + 1}: target is not a number")
+    def send_target(self, mode, v):
+        if self.mode.get() != mode:
             return
-        self.app.cmd("set_target", self.m, self.to_counts(v))
-
-    def to_counts(self, v):
-        """Target as shown (deg / RPM when scaled) -> what the board takes."""
         cpt, scaled = self.app.counts_per_turn(self.m)
-        if scaled and self.mode.get() == 3:
-            return v / 360.0 * cpt
-        if scaled and self.mode.get() == 2:
-            return v / 60.0 * cpt
-        return v
-
-    def on_slider(self, _v):
-        if self.mode.get() == 0:
-            return
-        now = time.monotonic()
-        if now - self._last_slider_send < 0.05:   # 20 updates/s max
-            return
-        self._last_slider_send = now
-        v = self.slider_var.get()
-        v = round(v, 3) if self.mode.get() == 1 else round(v)
-        self.target.set(str(v))
-        self.app.cmd("set_target", self.m, self.to_counts(v))
+        if mode == 1:
+            v = v / 100.0
+        elif scaled and mode == 2:
+            v = v / 60.0 * cpt
+        elif scaled and mode == 3:
+            v = v / 360.0 * cpt
+        self.app.cmd("set_target", self.m, v)
 
     def update_telem(self, t):
         self.vals["mode"].set(MODES[t["mode"]] if t["mode"] < 4 else "?")
@@ -148,10 +196,14 @@ class MotorPanel(ttk.LabelFrame):
         self.fault_lbl.configure(foreground="#c53030" if t["faults"] else "")
         self.vals["limit"].set("PRESSED" if t["limit"] else "released")
         self.vals["home"].set("homing..." if t.get("homing") else "done" if t.get("homed") else "not homed")
-        if t["mode"] != self.mode.get() and t["mode"] < 4:
-            # the board changed mode on its own (fault, watchdog, STOP)
+        self._last_pos_u = t["pos_u"]
+        # The board changed mode on its own (fault, watchdog, STOP). Ignore it
+        # briefly after a click: telemetry sent before the MODE command landed
+        # still carries the old mode.
+        if (t["mode"] != self.mode.get() and t["mode"] < 4
+                and time.monotonic() - self._mode_sent_t > 0.5):
             self.mode.set(t["mode"])
-            self._set_slider_range()
+            self._show_row()
 
 
 class Plot(ttk.Frame):
@@ -615,7 +667,7 @@ class App(tk.Tk):
                         self.params[pid] = val
                         if changed and pid in UNIT_PARAMS | {BY_NAME["M1_VEL_MAX"][0], BY_NAME["M2_VEL_MAX"][0]}:
                             for panel in self.motors:
-                                panel._set_slider_range()
+                                panel.refresh_units()
                     self.config_tab.on_param(pid, val, st)
                 elif kind == "paramdef":
                     _, pid, name, _val, lo, hi, de = ev
