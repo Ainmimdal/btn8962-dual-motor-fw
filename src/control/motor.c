@@ -213,7 +213,7 @@ void motor_init(void)
         pid_init(&M->vel_pid, 0.0f, 0.0f, 0.0f);
         pid_init(&M->pos_pid, 0.0f, 0.0f, 0.0f);
         load_gains(m);
-        M->enc_last = encoder_raw(MOTOR_ENCODER(m));
+        M->enc_last = encoder_raw(m);
         M->cl_max = PRM_M(DUTY_MAX, m);
         M->mode = MODE_OFF;
     }
@@ -239,7 +239,7 @@ void control_tick(void)
         const float accel = PRM_M(ACCEL, m);
 
         /* ---- Measurements ---- */
-        uint16_t cnt = encoder_raw(MOTOR_ENCODER(m));
+        uint16_t cnt = encoder_raw(m);
         int16_t d = (int16_t)(cnt - M->enc_last);
         M->enc_last = cnt;
         const bool motor_inv = PRM(m == 0 ? PRM_M1_INVERT : PRM_M2_INVERT) > 0.5f;
@@ -253,7 +253,7 @@ void control_tick(void)
 #if USE_CURRENT_SENSE
         /* Only the high side that is switching reports current, so the motor
          * current is side A minus side B. */
-        const uint8_t ia = (uint8_t)(2 * MOTOR_BRIDGE(m)), ib = (uint8_t)(ia + 1);
+        const uint8_t ia = (uint8_t)(2 * m), ib = (uint8_t)(ia + 1);
         uint16_t ra = raw[ia], rb = raw[ib];
         float cur = adc_is_to_amps(ia, ra) - adc_is_to_amps(ib, rb);
         if (motor_inv)

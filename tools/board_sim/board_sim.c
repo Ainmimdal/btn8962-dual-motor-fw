@@ -275,11 +275,10 @@ static void plant_1ms(void)
                 w[m] += (ktj * ia[m] - 2.0 * w[m]) * dt;
             th[m] += w[m] * dt;
         }
-        sim_enc[MOTOR_ENCODER(m)] = (uint16_t)(int32_t)lround(th[m]);
+        sim_enc[m] = (uint16_t)(int32_t)lround(th[m]);
         double a = ia[m] > 0 ? ia[m] : 0, b = ia[m] < 0 ? -ia[m] : 0;
-        /* pwm_set/board_inh are stubbed per motor, but IS is per bridge. */
-        sim_is_raw[2 * MOTOR_BRIDGE(m)] = (uint16_t)fmin(4095.0, a / IS_AMPS_PER_COUNT);
-        sim_is_raw[2 * MOTOR_BRIDGE(m) + 1] = (uint16_t)fmin(4095.0, b / IS_AMPS_PER_COUNT);
+        sim_is_raw[2 * m] = (uint16_t)fmin(4095.0, a / IS_AMPS_PER_COUNT);
+        sim_is_raw[2 * m + 1] = (uint16_t)fmin(4095.0, b / IS_AMPS_PER_COUNT);
     }
 }
 
@@ -351,8 +350,8 @@ static uint16_t shaft1_last;
 static void step_track(int32_t switch_below)
 {
     step_1ms();
-    shaft1 += (int16_t)(sim_enc[MOTOR_ENCODER(0)] - shaft1_last);
-    shaft1_last = sim_enc[MOTOR_ENCODER(0)];
+    shaft1 += (int16_t)(sim_enc[0] - shaft1_last);
+    shaft1_last = sim_enc[0];
     lim_raw[0] = shaft1 < switch_below;
 }
 
@@ -397,7 +396,7 @@ static int selftest(void)
     lim_raw[0] = 0;
     for (int i = 0; i < 10; i++) step_1ms();
     motor_clear_fault(0);
-    shaft1_last = sim_enc[MOTOR_ENCODER(0)];
+    shaft1_last = sim_enc[0];
     shaft1 = 0;
     const int32_t sw = -3000;
     PRM(PRM_M1_HOME_VEL) = 2000;

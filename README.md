@@ -29,7 +29,7 @@ dual-motor-fw/
 
 ## Pin map
 
-LQFP48 pin numbers. Net names are as drawn on the schematic. The motor column is as drawn too; the default build sets `SWAP_BRIDGES=1` (include/config.h), so motor 1 actually drives the U2/U3 bridge (OUT3/OUT4, the terminals marked M2 on the built board) and motor 2 drives U6/U8 (OUT1/OUT2). The encoders are swapped the same way (`SWAP_ENCODERS=1`): motor 1 reads CN2 (TIM4, PB6/PB7) and motor 2 reads CN1 (PA6/PA7 or PA8/PA9 per `ENC1_CONFIG`). The ENC1_/ENC2_ settings follow the motor number. So on the built board, the M1 terminals and M1 encoder port are motor 1, and the M2 ones are motor 2.
+LQFP48 pin numbers. Net names are as drawn on the schematic. Motor numbering is fixed as drawn: motor 1 = U6/U8 (OUT1/OUT2) with encoder 1 on CN1, motor 2 = U2/U3 (OUT3/OUT4) with encoder 2 on CN2.
 
 | Net | MCU pin | Pin # | Function in firmware | Notes |
 |---|---|---|---|---|
@@ -310,11 +310,11 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 
 **3. One motor at low duty** (supply limit about 1 A)
 
-- [ ] Connect motor 1 to OUT3/OUT4 (OUT1/OUT2 with `SWAP_BRIDGES=0`).
-- [ ] `MODE 1 DUTY`, then `SET 1 0.1`. E2 goes high and P3 shows about 10 % duty; the motor turns slowly.
+- [ ] Connect motor 1 to OUT1/OUT2.
+- [ ] `MODE 1 DUTY`, then `SET 1 0.1`. E1 goes high and P1 shows about 10 % duty; the motor turns slowly.
 - [ ] Check that POS increases for positive duty. If not, set `ENC1_INVERT` (wrong count direction) or `MOTOR1_INVERT` (wrong rotation).
-- [ ] `SET 1 -0.1` reverses it and moves the PWM to P4. `MODE 1 OFF` drops E2.
-- [ ] Repeat for motor 2 (OUT1/OUT2).
+- [ ] `SET 1 -0.1` reverses it and moves the PWM to P2. `MODE 1 OFF` drops E1.
+- [ ] Repeat for motor 2 (OUT3/OUT4).
 
 **4. Check IS readings**
 
@@ -338,7 +338,7 @@ The status byte is 0 OK, 1 bad id, 2 out of range, 3 busy (a motor is enabled), 
 ## Assumptions
 
 - **Driver chip.** The fitted drivers are BTN8962TA (all four parts on the schematic are BTN8962TAAUMA1; only the title block says btn7971). `IS_KILIS = 19500` is the typical datasheet ratio and should be calibrated in step 4.
-- **Limit switches.** By default LIMIT1 faults motor 1 and LIMIT2 faults motor 2 (motor numbers after `SWAP_BRIDGES`). Each switch closes to GND, or opens with `LIMx_NC` = 1.
+- **Limit switches.** By default LIMIT1 faults motor 1 and LIMIT2 faults motor 2. Each switch closes to GND, or opens with `LIMx_NC` = 1.
 - **Encoders.** These are quadrature encoders read at x4. All native units are counts. `ENCx_CPR`, `Mx_GEAR` and `ENCx_ON_OUTPUT` only scale the ODrive "turns" on CAN and the GUI's degrees/RPM.
 - **PPM.** PPM inputs are measured and reported only (`GET PPM`, telemetry). Nothing is controlled from them yet.
 - **CAN.** The protocol follows ODrive CAN Simple 0.5.x. Default node IDs are 40 and 41, the default bit rate is 125 kbit/s, and the vendor commands use 0x1E/0x1F.

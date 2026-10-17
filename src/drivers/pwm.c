@@ -71,7 +71,7 @@ void pwm_set(uint8_t motor, float duty)
         b = duty_to_ccr(-duty);
 
     /* CCR preload is on: new values take effect at the next update event. */
-    if (MOTOR_BRIDGE(motor) == 0) {
+    if (motor == 0) {
         P1_CCR = a;
         P2_CCR = b;
     } else {

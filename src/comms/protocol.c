@@ -129,7 +129,7 @@ static void cmd_get_motor(uint8_t m)
     outf("OK M%u MODE=%s POS=%" PRId32 " VEL=%s CUR=%s DUTY=%s TGT=%s FAULT=%s LIM=%u HOME=%s",
          m + 1, mode_names[s.mode], s.pos, vel, cur, duty, tgt, fn, s.limit ? 1u : 0u,
          s.homing ? "RUNNING" : s.homed ? "DONE" : "NO");
-    if (MOTOR_ENCODER(m) == 0) {   /* the motor on the CN1 hardware */
+    if (m == 0) {
         uint16_t idx;
         if (encoder1_index(&idx))
             outf(" IDX=%u", idx);
